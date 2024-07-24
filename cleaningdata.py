@@ -11,9 +11,9 @@ kolom = ['Joint', 'OutputCase', 'CaseType', 'StepType', 'F1', 'F2', 'F3', 'M1', 
 valid_columns = [col for col in kolom if col in data_new.columns]
 filtered_data = data_new[valid_columns].copy()
 
-# Mengganti NaN pada kolom 'StepType'
+# Mengganti NaN pada kolom 'StepType' Menjado Beban Layan
 if 'StepType' in filtered_data.columns:
-    filtered_data['StepType'] = filtered_data['StepType'].fillna('Beban layan')
+    filtered_data['StepType'] = filtered_data['StepType'].fillna('BL')
     
 
 

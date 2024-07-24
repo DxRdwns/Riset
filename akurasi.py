@@ -17,7 +17,7 @@ kolom = ['Joint', 'OutputCase', 'CaseType', 'StepType', 'F1', 'F2', 'F3', 'M1', 
 valid_columns = [col for col in kolom if col in data_new.columns]
 filtered_data = data_new[valid_columns].copy()
 
-print(filtered_data['OutputCase'])
+
 # Mengganti NaN pada kolom 'StepType'
 if 'StepType' in filtered_data.columns:
     filtered_data['StepType'] = filtered_data['StepType'].fillna('Beban layan')
@@ -39,8 +39,8 @@ for col in string_columns:
 print(filtered_data.head())
 
 # Misalkan kita ingin memprediksi 'StepType'
-X = filtered_data.drop('StepType', axis=1)
-y = filtered_data['StepType']
+X = filtered_data.drop('OutputCase', axis=1)
+y = filtered_data['OutputCase']
 
 # Memisahkan data menjadi pelatihan dan pengujian
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -59,4 +59,3 @@ print(f'Akurasi: {accuracy * 100:.2f}%')
 # Menampilkan laporan klasifikasi
 print(classification_report(y_test, y_pred))
 
-print(filtered_data['StepType'])
