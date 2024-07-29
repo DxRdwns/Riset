@@ -56,6 +56,9 @@ sampled_dat2_adjusted <- sampled_dat2 %>%
 transformed_dat2 <- sampled_dat2_adjusted %>%
   mutate(across(everything(), ~log1p(.)))
 
+# Pemeriksaan outliers menggunakan mvn() dengan parameter outlierMethod
+outliers <- mvn(data = transformed_dat2, mvnTest = "hz", univariateTest = "SW", multivariateOutlierMethod = "adj", multivariatePlot = "qq")
+
 # Uji normalitas multivariat pada data yang telah ditransformasi
 mvn_transformed_result <- mvn(data = transformed_dat2, mvnTest = "dh", univariateTest = "SW", multivariatePlot = "qq")
 print(mvn_transformed_result)
