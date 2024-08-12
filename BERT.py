@@ -10,11 +10,11 @@ tokenizer = BertTokenizer.from_pretrained('./finetuned_bert_model')
 model.eval()
 
 # 2. Baca Data dari File Excel
-df = pd.read_excel('dataset/datapondasi.xlsx', sheet_name='Joint Reactions', header=None)
+df = pd.read_excel('dataset/100data.xlsx', sheet_name='Joint Reactions', header=None)
 
 # Prepare header and data
 new_header = df.iloc[1]
-data_new = df[2:].copy()
+data_new = df[2:103].copy()
 data_new.columns = new_header
 data_new = data_new.drop(2)
 
@@ -49,14 +49,23 @@ with torch.no_grad():
 # Konversi prediksi ke numpy array
 predictions = predictions.numpy()
 
-# 5. Interpretasi Hasil sebagai Presentase Noise
-filtered_data['NoiseF1'] = predictions[:, 0] * 100  # Presentase noise untuk F1
-filtered_data['NoiseF2'] = predictions[:, 1] * 100  # Presentase noise untuk F2
-filtered_data['NoiseF3'] = predictions[:, 2] * 100  # Presentase noise untuk F3
-filtered_data['NoiseM1'] = predictions[:, 3] * 100  # Presentase noise untuk M1
-filtered_data['NoiseM2'] = predictions[:, 4] * 100  # Presentase noise untuk M2
-filtered_data['NoiseM3'] = predictions[:, 5] * 100  # Presentase noise untuk M3
+# Konversi prediksi ke biner (0 atau 1)
+binary_predictions = (predictions >= 0.5).astype(int)
 
-# 6. Simpan atau Tampilkan Hasil
-filtered_data.to_excel('/PredictNoise/predicted_noise.xlsx', index=False)  # Simpan hasil prediksi ke file Excel
+# Tambahkan prediksi ke data
+filtered_data['NoiseF1'] = binary_predictions[:, 0]
+filtered_data['NoiseF2'] = binary_predictions[:, 1]
+filtered_data['NoiseF3'] = binary_predictions[:, 2]
+filtered_data['NoiseM1'] = binary_predictions[:, 3]
+filtered_data['NoiseM2'] = binary_predictions[:, 4]
+filtered_data['NoiseM3'] = binary_predictions[:, 5]
+
+# Hitung persentase data yang merupakan noise
+total_predictions = len(filtered_data)
+noise_predictions = filtered_data[['NoiseF1', 'NoiseF2', 'NoiseF3', 'NoiseM1', 'NoiseM2', 'NoiseM3']].sum().sum()
+noise_percentage = (noise_predictions / (total_predictions * 6)) * 100
+
+# 5. Simpan atau Tampilkan Hasil
+filtered_data.to_excel('predicted_noise.xlsx', index=False)  # Simpan hasil prediksi ke file Excel
 print(filtered_data[['NoiseF1', 'NoiseF2', 'NoiseF3', 'NoiseM1', 'NoiseM2', 'NoiseM3']])  # Tampilkan hasil
+print(f"Persentase data yang merupakan noise: {noise_percentage:.2f}%")
