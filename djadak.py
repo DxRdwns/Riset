@@ -1,8 +1,7 @@
 import torch
 import pandas as pd
-from tqdm import tqdm  # Menggunakan tqdm standar
+from tqdm.notebook import tqdm
 
-# Load dataset
 df = pd.read_excel('DataTraining/datapondasi LbOutputCase.xlsx', sheet_name='Joint Reactions', header=None)
 
 # Prepare header and data
@@ -12,17 +11,25 @@ data_new.columns = new_header
 data_new = data_new.drop(2)
 
 # Select relevant columns
-kolom = ['Joint', 'OutputCase', 'LbOutputCase', 'CaseType', 'StepType', 'F1', 'F2', 'F3', 'M1', 'M2', 'M3']
+kolom = [
+    'Joint', 'OutputCase', 'LbOutputCase', 'CaseType', 'StepType',
+    'F1', 'F2', 'F3', 'M1', 'M2', 'M3'
+]
 valid_columns = [col for col in kolom if col in data_new.columns]
 df2 = data_new[valid_columns].copy()
 
-# Label encoding
+df2.head()
+
+df2.LbOutputCase.value_counts()
+
 possible_labels = df2.LbOutputCase.unique()
-label_dict = {possible_label: index for index, possible_label in enumerate(possible_labels)}
+label_dict = {}
+for index, possible_label in enumerate(possible_labels):
+    label_dict[possible_label] = index
 
 df2['label'] = df2.LbOutputCase.replace(label_dict)
+df2.head()
 
-# Split data into train and validation sets
 from sklearn.model_selection import train_test_split
 x_train, x_val, y_train, y_val = train_test_split(df2.index.values,
                                                   df2.label.values,
@@ -31,10 +38,12 @@ x_train, x_val, y_train, y_val = train_test_split(df2.index.values,
                                                   stratify=df2.label.values)
 
 df2['data_type'] = ['not_set'] * df2.shape[0]
+
 df2.loc[x_train, 'data_type'] = 'train'
 df2.loc[x_val, 'data_type'] = 'val'
 
-# Tokenization using BERT tokenizer
+df2.groupby(['LbOutputCase', 'label', 'data_type']).count()
+
 from transformers import BertTokenizer
 from torch.utils.data import TensorDataset
 
@@ -44,7 +53,7 @@ encoded_data_train = tokenizer.batch_encode_plus(
     df2[df2.data_type == 'train'].OutputCase.values,
     add_special_tokens=True,
     return_attention_mask=True,
-    padding=True,
+    padding=True,  # Changed pad_to_max_length to padding
     max_length=255,
     return_tensors='pt'
 )
@@ -53,7 +62,7 @@ encoded_data_val = tokenizer.batch_encode_plus(
     df2[df2.data_type == 'val'].OutputCase.values,
     add_special_tokens=True,
     return_attention_mask=True,
-    padding=True,
+    padding=True,  # Changed pad_to_max_length to padding
     max_length=255,
     return_tensors='pt'
 )
@@ -69,14 +78,12 @@ label_val = torch.tensor(df2[df2.data_type == 'val'].label.values)
 dataset_train = TensorDataset(input_ids_train, attention_mask_train, label_train)
 dataset_val = TensorDataset(input_ids_val, attention_mask_val, label_val)
 
-# Load BERT model
 from transformers import BertForSequenceClassification
 model = BertForSequenceClassification.from_pretrained("bert-base-uncased",
                                                       num_labels=len(label_dict),
                                                       output_attentions=False,
                                                       output_hidden_states=False)
 
-# DataLoader
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 
 batch_size = 32
@@ -86,48 +93,47 @@ dataloader_train = DataLoader(dataset_train,
                               batch_size=batch_size)
 
 dataloader_val = DataLoader(dataset_val,
-                            sampler=SequentialSampler(dataset_val),
+                            sampler=SequentialSampler(dataset_val),  # Use SequentialSampler for validation
                             batch_size=batch_size)
 
-# Optimizer and scheduler
 from transformers import AdamW, get_linear_schedule_with_warmup
 
 optimizer = AdamW(model.parameters(),
                   lr=1e-5,
                   eps=1e-8)
 
-epochs = 5
+epochs = 1
 scheduler = get_linear_schedule_with_warmup(optimizer,
                                             num_warmup_steps=0,
                                             num_training_steps=len(dataloader_train) * epochs)
 
-# Evaluation metrics
 import numpy as np
 from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
 
 def f1_score_func(preds, labels):
     preds_flat = np.argmax(preds, axis=1).flatten()
     labels_flat = labels.flatten()
-    return f1_score(labels_flat, preds_flat, average='weighted')
+    return f1_score(labels_flat, preds_flat, average='weighted')  # Corrected spelling
 
 def precision_score_func(preds, labels):
     preds_flat = np.argmax(preds, axis=1).flatten()
     labels_flat = labels.flatten()
-    return precision_score(labels_flat, preds_flat, average='macro')
+    return precision_score(labels_flat, preds_flat, average='macro')  # Corrected spelling
 
 def recall_score_func(preds, labels):
     preds_flat = np.argmax(preds, axis=1).flatten()
     labels_flat = labels.flatten()
-    return recall_score(labels_flat, preds_flat, average='macro')
+    return recall_score(labels_flat, preds_flat, average='macro')  # Corrected spelling
 
 def accuracy_score_func(preds, labels):
     preds_flat = np.argmax(preds, axis=1).flatten()
     labels_flat = labels.flatten()
-    return accuracy_score(labels_flat, preds_flat)
+    return accuracy_score(labels_flat, preds_flat)  # Removed 'average' as it's not needed here
 
-# Move model to device (GPU or CPU)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model.to(device)
+
+print(device)
 
 def evaluate(dataloader_val):
     model.eval()
@@ -150,7 +156,7 @@ def evaluate(dataloader_val):
         loss_val_total += loss.item()
 
         logits = logits.detach().cpu().numpy()
-        label_ids = inputs['labels'].cpu().numpy()
+        label_ids = inputs['labels'].cpu().numpy()  # Changed to 'labels' from 'label'
         predictions.append(logits)
         true_vals.append(label_ids)
 
@@ -160,14 +166,19 @@ def evaluate(dataloader_val):
 
     return loss_val_avg, predictions, true_vals
 
-# Training loop
-training_stats = []
+training_stats = []  # Initialized training_stats as an empty list
+import os
 
+# Membuat folder jika belum ada
+output_folder = 'OutputCaseModel'
+if not os.path.exists(output_folder):
+    os.makedirs(output_folder)
+    
 for epoch_i in tqdm(range(0, epochs)):
     model.train()
     loss_train_total = 0
 
-    progress_bar = tqdm(dataloader_train, desc=f'Epoch {epoch_i + 1}/{epochs}', leave=True)
+    progress_bar = tqdm(dataloader_train, desc=f'Epoch {epoch_i + 1}/{epochs}', leave=True, disable=False)
     for batch in progress_bar:
         model.zero_grad()
         batch = tuple(b.to(device) for b in batch)
@@ -189,33 +200,32 @@ for epoch_i in tqdm(range(0, epochs)):
 
         progress_bar.set_postfix({'training_loss': '{0:.2f}'.format(loss.item() / len(batch))})
 
-    # Save model after every epoch
-    torch.save(model.state_dict(), f'finetuned_BERT_epoch_{epoch_i}.model')
+    torch.save(model.state_dict(), os.path.join(output_folder, f'finetuned_BERT_epoch_{epoch_i}.model'))
 
-    tqdm.write(f'\nEpoch {epoch_i + 1}')
+    tqdm.write(f'\nEpoch {epoch_i}')
+
     loss_train_avg = loss_train_total / len(dataloader_train)
     tqdm.write(f'Training loss: {loss_train_avg}')
 
-    val_loss, predictions, true_vals = evaluate(dataloader_val)
+    val_loss, predictions, true_vals = evaluate(dataloader_val)  # Corrected to 'dataloader_val'
     val_f1 = f1_score_func(predictions, true_vals)
     val_precision = precision_score_func(predictions, true_vals)
     val_recall = recall_score_func(predictions, true_vals)
     val_accuracy = accuracy_score_func(predictions, true_vals)
-
     tqdm.write(f'Validation loss: {val_loss}')
-    tqdm.write(f'F1 Score: {val_f1}')
-    tqdm.write(f'Precision Score: {val_precision}')
-    tqdm.write(f'Recall Score: {val_recall}')
-    tqdm.write(f'Accuracy Score: {val_accuracy}')
+    tqdm.write(f'f1 score (weighted): {val_f1}')
+    tqdm.write(f'Precision score: {val_precision}')
+    tqdm.write(f'Recall score: {val_recall}')
+    tqdm.write(f'Accuracy score: {val_accuracy}')
 
     training_stats.append(
         {
-            'epoch': epoch_i + 1,
+            'epoch': epoch_i + 1,  # Changed to epoch_i + 1
             'Training Loss': loss_train_avg,
             'Valid Loss': val_loss,
             'F1 Score': val_f1,
             'Precision Score': val_precision,
-            'Recall Score': val_recall,
+            'Recall score': val_recall,
             'Accuracy Score': val_accuracy
         }
     )
