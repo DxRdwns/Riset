@@ -1,103 +1,221 @@
+import torch
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.preprocessing import LabelEncoder
-from imblearn.over_sampling import RandomOverSampler
-from imblearn.under_sampling import RandomUnderSampler
-from imblearn.combine import SMOTEENN
-from imblearn.over_sampling import SMOTE
+from tqdm import tqdm  # Menggunakan tqdm standar
 
-# Ganti dengan jalur file yang sesuai
-file_path = 'dataset/datapondasi.xlsx'
-data = pd.read_excel(file_path, sheet_name='Joint Reactions', header=None)
-new_header = data.iloc[1]
-data_new = data[2:].copy()
+# Load dataset
+df = pd.read_excel('DataTraining/datapondasi LbOutputCase.xlsx', sheet_name='Joint Reactions', header=None)
+
+# Prepare header and data
+new_header = df.iloc[1]
+data_new = df.iloc[2:2153].copy()  # Changed to iloc for correct indexing
 data_new.columns = new_header
 data_new = data_new.drop(2)
 
-# Menentukan kolom yang ingin dipilih
-kolom = ['Joint', 'OutputCase', 'CaseType', 'StepType', 'F1', 'F2', 'F3', 'M1', 'M2', 'M3']
+# Select relevant columns
+kolom = ['Joint', 'OutputCase', 'LbOutputCase', 'CaseType', 'StepType', 'F1', 'F2', 'F3', 'M1', 'M2', 'M3']
 valid_columns = [col for col in kolom if col in data_new.columns]
-filtered_data = data_new[valid_columns].copy()
+df2 = data_new[valid_columns].copy()
 
-# Mengganti NaN pada kolom 'StepType'
-if 'StepType' in filtered_data.columns:
-    filtered_data['StepType'] = filtered_data['StepType'].fillna('Beban layan')
+# Label encoding
+possible_labels = df2.LbOutputCase.unique()
+label_dict = {possible_label: index for index, possible_label in enumerate(possible_labels)}
 
-# Menampilkan 5 baris pertama dari data yang telah difilter
-print(filtered_data.head())
+df2['label'] = df2.LbOutputCase.replace(label_dict)
 
-# Membuat peta (mapping) dari nilai-nilai 'OutputCase' ke integer
-output_case_unique = filtered_data['OutputCase'].unique()
-output_case_map = {value: idx for idx, value in enumerate(output_case_unique)}
+# Split data into train and validation sets
+from sklearn.model_selection import train_test_split
+x_train, x_val, y_train, y_val = train_test_split(df2.index.values,
+                                                  df2.label.values,
+                                                  test_size=0.30,
+                                                  random_state=17,
+                                                  stratify=df2.label.values)
 
-# Menggunakan mapping untuk mengubah nilai-nilai 'OutputCase' menjadi integer
-filtered_data['OutputCase'] = filtered_data['OutputCase'].map(output_case_map)
+df2['data_type'] = ['not_set'] * df2.shape[0]
+df2.loc[x_train, 'data_type'] = 'train'
+df2.loc[x_val, 'data_type'] = 'val'
 
-# Encode kolom kategori ke angka
-label_encoders = {}
-kategori_kolom = filtered_data.select_dtypes(include=['object']).columns
+# Tokenization using BERT tokenizer
+from transformers import BertTokenizer
+from torch.utils.data import TensorDataset
 
-for col in kategori_kolom:
-    le = LabelEncoder()
-    filtered_data[col] = le.fit_transform(filtered_data[col])
-    label_encoders[col] = le
+tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
-# Daftar kolom target yang ingin dianalisis
-target_columns = ['OutputCase', 'Joint', 'StepType', 'F1', 'F2', 'F3', 'M1', 'M2', 'M3']
+encoded_data_train = tokenizer.batch_encode_plus(
+    df2[df2.data_type == 'train'].OutputCase.values,
+    add_special_tokens=True,
+    return_attention_mask=True,
+    padding=True,
+    max_length=255,
+    return_tensors='pt'
+)
 
-# Menyimpan hasil untuk visualisasi
-resampled_results = {}
+encoded_data_val = tokenizer.batch_encode_plus(
+    df2[df2.data_type == 'val'].OutputCase.values,
+    add_special_tokens=True,
+    return_attention_mask=True,
+    padding=True,
+    max_length=255,
+    return_tensors='pt'
+)
 
-for tar in target_columns:
-    # Memisahkan fitur dan target
-    X = filtered_data.drop(tar, axis=1)
-    y = filtered_data[tar]
+input_ids_train = encoded_data_train['input_ids']
+attention_mask_train = encoded_data_train['attention_mask']
+label_train = torch.tensor(df2[df2.data_type == 'train'].label.values)
 
-    # Periksa distribusi kelas
-    if len(y.unique()) <= 1:
-        print(f"Kolom target '{tar}' memiliki hanya satu kelas. Penyeimbangan tidak diterapkan.")
-        continue
+input_ids_val = encoded_data_val['input_ids']
+attention_mask_val = encoded_data_val['attention_mask']
+label_val = torch.tensor(df2[df2.data_type == 'val'].label.values)
 
-    # Hapus kelas dengan hanya satu sampel
-    class_counts = y.value_counts()
-    classes_to_remove = class_counts[class_counts <= 1].index
-    if classes_to_remove.size > 0:
-        print(f"Kolom target '{tar}' memiliki kelas dengan hanya satu sampel: {classes_to_remove}. Kelas ini akan dihapus.")
-        filtered_data = filtered_data[~filtered_data[tar].isin(classes_to_remove)]
-        X = filtered_data.drop(tar, axis=1)
-        y = filtered_data[tar]
+dataset_train = TensorDataset(input_ids_train, attention_mask_train, label_train)
+dataset_val = TensorDataset(input_ids_val, attention_mask_val, label_val)
 
-    # Metode penyeimbangan 1: Random Oversampling
-    ros = RandomOverSampler(random_state=42)
-    X_resampled_ros, y_resampled_ros = ros.fit_resample(X, y)
+# Load BERT model
+from transformers import BertForSequenceClassification
+model = BertForSequenceClassification.from_pretrained("bert-base-uncased",
+                                                      num_labels=len(label_dict),
+                                                      output_attentions=False,
+                                                      output_hidden_states=False)
 
-    # Metode penyeimbangan 2: Random Undersampling
-    rus = RandomUnderSampler(random_state=42)
-    X_resampled_rus, y_resampled_rus = rus.fit_resample(X, y)
+# DataLoader
+from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 
-    # Metode penyeimbangan 3: SMOTEENN
-    try:
-        smoteenn = SMOTEENN(random_state=42)
-        X_resampled_smoteenn, y_resampled_smoteenn = smoteenn.fit_resample(X, y)
-        resampled_results[tar] = {
-            'RandomOverSampler': pd.DataFrame(X_resampled_ros, columns=X.columns).assign(**{tar: y_resampled_ros}),
-            
-         
+batch_size = 32
+
+dataloader_train = DataLoader(dataset_train,
+                              sampler=RandomSampler(dataset_train),
+                              batch_size=batch_size)
+
+dataloader_val = DataLoader(dataset_val,
+                            sampler=SequentialSampler(dataset_val),
+                            batch_size=batch_size)
+
+# Optimizer and scheduler
+from transformers import AdamW, get_linear_schedule_with_warmup
+
+optimizer = AdamW(model.parameters(),
+                  lr=1e-5,
+                  eps=1e-8)
+
+epochs = 5
+scheduler = get_linear_schedule_with_warmup(optimizer,
+                                            num_warmup_steps=0,
+                                            num_training_steps=len(dataloader_train) * epochs)
+
+# Evaluation metrics
+import numpy as np
+from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
+
+def f1_score_func(preds, labels):
+    preds_flat = np.argmax(preds, axis=1).flatten()
+    labels_flat = labels.flatten()
+    return f1_score(labels_flat, preds_flat, average='weighted')
+
+def precision_score_func(preds, labels):
+    preds_flat = np.argmax(preds, axis=1).flatten()
+    labels_flat = labels.flatten()
+    return precision_score(labels_flat, preds_flat, average='macro')
+
+def recall_score_func(preds, labels):
+    preds_flat = np.argmax(preds, axis=1).flatten()
+    labels_flat = labels.flatten()
+    return recall_score(labels_flat, preds_flat, average='macro')
+
+def accuracy_score_func(preds, labels):
+    preds_flat = np.argmax(preds, axis=1).flatten()
+    labels_flat = labels.flatten()
+    return accuracy_score(labels_flat, preds_flat)
+
+# Move model to device (GPU or CPU)
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model.to(device)
+
+def evaluate(dataloader_val):
+    model.eval()
+    loss_val_total = 0
+    predictions, true_vals = [], []
+
+    for batch in dataloader_val:
+        batch = tuple(b.to(device) for b in batch)
+        inputs = {
+            'input_ids': batch[0],
+            'attention_mask': batch[1],
+            'labels': batch[2],
         }
-    except ValueError as e:
-        print(f"Terjadi kesalahan saat menerapkan SMOTEENN pada kolom target '{tar}': {e}")
-        resampled_results[tar] = {
-            'RandomOverSampler': pd.DataFrame(X_resampled_ros, columns=X.columns).assign(**{tar: y_resampled_ros}),
-            
+
+        with torch.no_grad():
+            outputs = model(**inputs)
+
+        loss = outputs[0]
+        logits = outputs[1]
+        loss_val_total += loss.item()
+
+        logits = logits.detach().cpu().numpy()
+        label_ids = inputs['labels'].cpu().numpy()
+        predictions.append(logits)
+        true_vals.append(label_ids)
+
+    loss_val_avg = loss_val_total / len(dataloader_val)
+    predictions = np.concatenate(predictions, axis=0)
+    true_vals = np.concatenate(true_vals, axis=0)
+
+    return loss_val_avg, predictions, true_vals
+
+# Training loop
+training_stats = []
+
+for epoch_i in tqdm(range(0, epochs)):
+    model.train()
+    loss_train_total = 0
+
+    progress_bar = tqdm(dataloader_train, desc=f'Epoch {epoch_i + 1}/{epochs}', leave=True)
+    for batch in progress_bar:
+        model.zero_grad()
+        batch = tuple(b.to(device) for b in batch)
+        inputs = {
+            'input_ids': batch[0],
+            'attention_mask': batch[1],
+            'labels': batch[2],
         }
-        
-# Visualisasi distribusi setelah penyeimbangan
-for tar, results in resampled_results.items():
-    for method, data in results.items():
-        plt.figure(figsize=(10, 6))
-        sns.countplot(x=tar, data=data)
-        plt.title(f'Distribusi {tar} - {method}')
-        plt.xticks(rotation=45)
-        plt.show()
+
+        outputs = model(**inputs)
+
+        loss = outputs[0]
+        loss_train_total += loss.item()
+        loss.backward()
+
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        optimizer.step()
+        scheduler.step()
+
+        progress_bar.set_postfix({'training_loss': '{0:.2f}'.format(loss.item() / len(batch))})
+
+    # Save model after every epoch
+    torch.save(model.state_dict(), f'finetuned_BERT_epoch_{epoch_i}.model')
+
+    tqdm.write(f'\nEpoch {epoch_i + 1}')
+    loss_train_avg = loss_train_total / len(dataloader_train)
+    tqdm.write(f'Training loss: {loss_train_avg}')
+
+    val_loss, predictions, true_vals = evaluate(dataloader_val)
+    val_f1 = f1_score_func(predictions, true_vals)
+    val_precision = precision_score_func(predictions, true_vals)
+    val_recall = recall_score_func(predictions, true_vals)
+    val_accuracy = accuracy_score_func(predictions, true_vals)
+
+    tqdm.write(f'Validation loss: {val_loss}')
+    tqdm.write(f'F1 Score: {val_f1}')
+    tqdm.write(f'Precision Score: {val_precision}')
+    tqdm.write(f'Recall Score: {val_recall}')
+    tqdm.write(f'Accuracy Score: {val_accuracy}')
+
+    training_stats.append(
+        {
+            'epoch': epoch_i + 1,
+            'Training Loss': loss_train_avg,
+            'Valid Loss': val_loss,
+            'F1 Score': val_f1,
+            'Precision Score': val_precision,
+            'Recall Score': val_recall,
+            'Accuracy Score': val_accuracy
+        }
+    )

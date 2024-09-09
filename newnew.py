@@ -1,16 +1,16 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import classification_report, precision_score, recall_score, f1_score
 from imblearn.over_sampling import RandomOverSampler
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Embedding, LSTM, Dense, SpatialDropout1D
 import tensorflow as tf
+from tensorflow.keras.callbacks import Callback
 
 # Ganti dengan jalur file yang sesuai
 file_path = 'dataset/datapondasi.xlsx'
@@ -84,19 +84,54 @@ model.add(Dense(len(np.unique(y_resampled)), activation='softmax'))
 
 model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
 
+# Custom callback untuk menghitung precision, recall, f1-score
+class MetricsCallback(Callback):
+    def on_epoch_end(self, epoch, logs=None):
+        y_pred = model.predict(X_test)
+        y_pred_labels = np.argmax(y_pred, axis=1)
+
+        precision = precision_score(y_test, y_pred_labels, average='weighted')
+        recall = recall_score(y_test, y_pred_labels, average='weighted')
+        f1 = f1_score(y_test, y_pred_labels, average='weighted')
+
+        print(f'Epoch {epoch + 1} - Precision: {precision:.4f}, Recall: {recall:.4f}, F1-score: {f1:.4f}')
+
 # Melatih model
 batch_size = 32
 epochs = 5
 
-history = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, validation_data=(X_test, y_test), verbose=2)
+history = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, validation_data=(X_test, y_test), verbose=2, callbacks=[MetricsCallback()])
 
-# Evaluasi model
+# Evaluasi model akhir
 loss, accuracy = model.evaluate(X_test, y_test, verbose=2)
 print(f'Accuracy: {accuracy * 100:.2f}%')
 
-# Membuat prediksi
+# Membuat prediksi akhir
 y_pred = model.predict(X_test)
 y_pred_labels = np.argmax(y_pred, axis=1)
 
-# Menampilkan laporan klasifikasi
+# Menampilkan laporan klasifikasi akhir
 print(classification_report(y_test, y_pred_labels))
+
+# Plot hasil training
+plt.figure(figsize=(12, 6))
+
+# Plot accuracy
+plt.subplot(1, 2, 1)
+plt.plot(history.history['accuracy'], label='Training Accuracy')
+plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+plt.title('Accuracy per Epoch')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
+plt.legend()
+
+# Plot loss
+plt.subplot(1, 2, 2)
+plt.plot(history.history['loss'], label='Training Loss')
+plt.plot(history.history['val_loss'], label='Validation Loss')
+plt.title('Loss per Epoch')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.legend()
+
+plt.show()
