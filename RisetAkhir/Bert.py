@@ -25,10 +25,10 @@ df2['label'] = df2.LbOutputCase.replace(label_dict)
 # Split data into train and validation sets
 from sklearn.model_selection import train_test_split
 x_train, x_val, y_train, y_val = train_test_split(df2.index.values,
-                                                  df2.label.values,
-                                                  test_size=0.30,
-                                                  random_state=17,
-                                                  stratify=df2.label.values)
+                                                df2.label.values,
+                                                test_size=0.30,
+                                                random_state=17,
+                                                stratify=df2.label.values)
 
 df2['data_type'] = ['not_set'] * df2.shape[0]
 df2.loc[x_train, 'data_type'] = 'train'
@@ -72,9 +72,9 @@ dataset_val = TensorDataset(input_ids_val, attention_mask_val, label_val)
 # Load BERT model
 from transformers import BertForSequenceClassification
 model = BertForSequenceClassification.from_pretrained("bert-base-uncased",
-                                                      num_labels=len(label_dict),
-                                                      output_attentions=False,
-                                                      output_hidden_states=False)
+                                                    num_labels=len(label_dict),
+                                                    output_attentions=False,
+                                                    output_hidden_states=False)
 
 # DataLoader
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
@@ -82,8 +82,8 @@ from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 batch_size = 32
 
 dataloader_train = DataLoader(dataset_train,
-                              sampler=RandomSampler(dataset_train),
-                              batch_size=batch_size)
+                            sampler=RandomSampler(dataset_train),
+                            batch_size=batch_size)
 
 dataloader_val = DataLoader(dataset_val,
                             sampler=SequentialSampler(dataset_val),
@@ -93,8 +93,8 @@ dataloader_val = DataLoader(dataset_val,
 from transformers import AdamW, get_linear_schedule_with_warmup
 
 optimizer = AdamW(model.parameters(),
-                  lr=1e-5,
-                  eps=1e-8)
+                lr=1e-5,
+                eps=1e-8)
 
 epochs = 5
 scheduler = get_linear_schedule_with_warmup(optimizer,
