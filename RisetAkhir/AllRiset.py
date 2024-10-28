@@ -406,21 +406,21 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense, Dropout
 from tensorflow.keras.callbacks import EarlyStopping
 print('=========== CNN ===========')
-df3 = df
+df4 = df
 
 # Menangani nilai NaN
-if 'StepType' in df3.columns:
-    df3['StepType'] = df3['StepType'].fillna('Beban layan')
+if 'StepType' in df4.columns:
+    df4['StepType'] = df4['StepType'].fillna('Beban layan')
 
 # Mengonversi kolom non-numerik menjadi nilai numerik
 le = LabelEncoder()
 for col in ['CaseType', 'StepType', 'OutputCase', 'Joint']:
-    if col in df3.columns:
-        df3[col] = le.fit_transform(df3[col])
+    if col in df4.columns:
+        df4[col] = le.fit_transform(df4[col])
 
 # Memisahkan fitur dan target
-X = df3.drop(columns=['StepType'])  # Semua kolom kecuali 'CaseType' sebagai fitur
-y = df3['StepType']  # Kolom 'CaseType' sebagai target
+X = df4.drop(columns=['StepType'])  # Semua kolom kecuali 'CaseType' sebagai fitur
+y = df4['StepType']  # Kolom 'CaseType' sebagai target
 
 # Memeriksa distribusi target
 print("Distribusi target (CaseType):")
@@ -492,12 +492,12 @@ print('=========== DNN ===========')
 # Mengonversi kolom non-numerik menjadi nilai numerik
 le = LabelEncoder()
 for col in ['CaseType', 'StepType', 'OutputCase', 'Joint']:
-    if col in df3.columns:
-        df3[col] = le.fit_transform(df3[col])
+    if col in df4.columns:
+        df4[col] = le.fit_transform(df4[col])
 
 # Memisahkan fitur dan target
-X = df3.drop(columns=['CaseType'])  
-y = df3['CaseType']  
+X = df4.drop(columns=['CaseType'])  
+y = df4['CaseType']  
 
 # Mengonversi X dan y ke tipe data float dan int
 X = X.astype(float)
